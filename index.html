@@ -13,7 +13,7 @@ button{padding:10px 14px} .muted{color:#a9b7cc}
 const PORTAL="https://headphones-genesis-norm-linux.trycloudflare.com";
 const out=document.querySelector("#out");
 const targets=[["profile-search-bob","search"],["profile-me","me"],["audit-note-bob","note"]];
-const timing=win=>win.performance.getEntries().map(e=>({type:e.entryType,name:e.name,status:e.responseStatus,workerStart:e.workerStart,responseStart:e.responseStart,responseEnd:e.responseEnd,serverTiming:e.serverTiming?.map(s=>({name:s.name,duration:s.duration,description:s.description}))}));
+const timing=win=>win.performance.getEntries().map(e=>({type:e.entryType,name:e.name,status:e.responseStatus,workerStart:e.workerStart,responseStart:e.responseStart,responseEnd:e.responseEnd,transferSize:e.transferSize,encodedBodySize:e.encodedBodySize,decodedBodySize:e.decodedBodySize,serverTiming:e.serverTiming?.map(s=>({name:s.name,duration:s.duration,description:s.description}))}));
 async function run(){
  document.querySelector("#run").disabled=true;
  const report={page:location.href,at:new Date().toISOString(),normal:[],serviceWorker:[]};
@@ -37,7 +37,7 @@ async function run(){
     frame.onload=()=>{
      let item={label};
      try{
-      item.result=frame.contentDocument.body?.innerText;
+      item.result=frame.contentDocument?.body?.innerText||frame.contentDocument?.documentElement?.innerText||"";
       item.performance=frame.contentWindow.performance.getEntries().map(e=>({type:e.entryType,name:e.name,status:e.responseStatus,workerStart:e.workerStart,responseStart:e.responseStart,responseEnd:e.responseEnd,serverTiming:e.serverTiming?.map(s=>({name:s.name,duration:s.duration,description:s.description}))}));
      }catch(e){item.error=String(e);}
      frame.remove();resolve(item);
