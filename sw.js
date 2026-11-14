@@ -26,8 +26,6 @@ self.addEventListener("fetch",event=>{
    }
    await r.body?.cancel();
   }catch(e){result.error=String(e);}
-  const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-  const html='<!doctype html><meta charset="utf-8"><title>SW navigation probe</title><h2>Service Worker probe</h2><pre id="result">'+esc(JSON.stringify(result,null,2))+'</pre><pre id="timing">loading…</pre><script>addEventListener("load",()=>{document.querySelector("#timing").textContent=JSON.stringify(performance.getEntries().map(e=>({type:e.entryType,name:e.name,status:e.responseStatus,workerStart:e.workerStart,responseStart:e.responseStart,responseEnd:e.responseEnd,serverTiming:e.serverTiming?.map(s=>({name:s.name,duration:s.duration,description:s.description}))})),null,2)})<\/script>';
-  return new Response(html,{headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store"}});
+  return r;
  })());
 });
