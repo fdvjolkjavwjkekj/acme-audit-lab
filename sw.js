@@ -1,4 +1,4 @@
-const PORTAL = 'https://seller-machines-lesser-calm.trycloudflare.com';
+const PORTAL = 'https://protecting-capacity-original-intent.trycloudflare.com';
 self.addEventListener("install", e => self.skipWaiting());
 self.addEventListener("activate", e => e.waitUntil(self.clients.claim()));
 self.addEventListener("fetch", event => {
