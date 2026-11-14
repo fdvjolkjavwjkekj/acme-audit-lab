@@ -1,4 +1,4 @@
-const PORTAL="https://protecting-capacity-original-intent.trycloudflare.com";
+const PORTAL="https://headphones-genesis-norm-linux.trycloudflare.com";
 self.addEventListener("install",e=>e.waitUntil(self.skipWaiting()));
 self.addEventListener("activate",e=>e.waitUntil(self.clients.claim()));
 self.addEventListener("fetch",event=>{
