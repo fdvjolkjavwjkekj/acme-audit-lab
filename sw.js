@@ -1,51 +1,27 @@
 const PORTAL = 'https://seller-machines-lesser-calm.trycloudflare.com';
-self.addEventListener("install", event => self.skipWaiting());
-self.addEventListener("activate", event => event.waitUntil(self.clients.claim()));
-
+self.addEventListener("install", e => self.skipWaiting());
+self.addEventListener("activate", e => e.waitUntil(self.clients.claim()));
 self.addEventListener("fetch", event => {
-  const url = new URL(event.request.url);
-  if (event.request.mode !== "navigate" || url.pathname !== new URL("./__sw_probe__", self.registration.scope).pathname) return;
-
+  const u = new URL(event.request.url);
+  const probePath = new URL("./__sw_probe__", self.registration.scope).pathname;
+  if (event.request.mode !== "navigate" || u.pathname !== probePath) return;
   event.respondWith((async () => {
-    const target = (url.searchParams.get("target") || "search").toLowerCase();
-    let api;
-    if (target === "me") api = `${PORTAL}/api/profile/me`;
-    else if (target === "note") api = `${PORTAL}/api/profile/audit-note?employee_id=bob`;
-    else api = `${PORTAL}/api/profile/search?username=bob`;
-
-    let status = "request not completed";
-    let body = "";
-    let serverTiming = "";
+    const kind = (u.searchParams.get("target") || "search").toLowerCase();
+    const path = kind === "me" ? "/api/profile/me" :
+      kind === "note" ? "/api/profile/audit-note?employee_id=bob" :
+      "/api/profile/search?username=bob";
+    let result = {kind, status:"not-run"};
     try {
-      const response = await fetch(api, {credentials:"include", mode:"cors", cache:"no-store"});
-      status = `${response.status} ${response.statusText}`;
-      serverTiming = response.headers.get("Server-Timing") || "(not exposed to Service Worker)";
-      body = await response.text();
-    } catch (e) {
-      status = "Fetch error: " + String(e);
-    }
-
-    const safe = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-    const html = `<!doctype html><html lang="ko"><meta charset="utf-8"><title>SW Navigation Probe</title>
-      <body style="font:16px/1.5 system-ui;max-width:900px;margin:32px auto;padding:0 16px;background:#101827;color:#e8eef8">
-      <h1>Service Worker navigation 결과</h1>
-      <p>Target: ${safe(target)}</p><p>API status: ${safe(status)}</p>
-      <p>Server-Timing visible to SW: ${safe(serverTiming)}</p>
-      <h2>API body</h2><pre id="body">${safe(body)}</pre>
-      <h2>Navigation / Resource Timing metadata</h2><pre id="timing">측정 중…</pre>
-      <script>
-      addEventListener("load", () => {
-        const entries = performance.getEntries().map(e => ({
-          entryType:e.entryType, name:e.name, initiatorType:e.initiatorType,
-          responseStatus:e.responseStatus, workerStart:e.workerStart,
-          responseStart:e.responseStart, responseEnd:e.responseEnd,
-          transferSize:e.transferSize, encodedBodySize:e.encodedBodySize,
-          decodedBodySize:e.decodedBodySize,
-          serverTiming:e.serverTiming?.map(s => ({name:s.name,duration:s.duration,description:s.description}))
-        }));
-        document.querySelector("#timing").textContent = JSON.stringify(entries,null,2);
-      });
-      </script></body></html>`;
-    return new Response(html, {status:200, headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store"}});
+      const r = await fetch(PORTAL + path, {mode:"cors",credentials:"include",cache:"no-store"});
+      result.status = r.status;
+      result.serverTimingHeader = r.headers.get("Server-Timing");
+      await r.body?.cancel();
+    } catch(e) { result.error = String(e); }
+    const esc = s => String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+    const html = `<!doctype html><meta charset="utf-8"><title>SW navigation probe</title>
+      <h1>SW navigation result</h1><pre id="r">${esc(JSON.stringify(result,null,2))}</pre>
+      <pre id="p">loading performance entries…</pre>
+      <script>addEventListener("load",()=>{document.querySelector("#p").textContent=JSON.stringify(performance.getEntries().map(e=>({type:e.entryType,name:e.name,responseStatus:e.responseStatus,workerStart:e.workerStart,responseStart:e.responseStart,responseEnd:e.responseEnd,serverTiming:e.serverTiming?.map(s=>({name:s.name,duration:s.duration,description:s.description}))})),null,2)})</script>`;
+    return new Response(html,{headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store"}});
   })());
 });
